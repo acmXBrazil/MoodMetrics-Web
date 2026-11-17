@@ -1,0 +1,34 @@
+{
+  "Saudável / Ruído": {
+    "titulo": "Saudável / Ruído",
+    "texto": "Perfil situado dentro da variabilidade esperada do espectro do humor. A carga sintomatológica total permanece abaixo dos limiares dimensionais de elevação significativa, sem indícios de desregulação clinicamente relevante no momento da avaliação. Achados nesta faixa não excluem a necessidade de acompanhamento longitudinal quando houver fatores de risco ou queixas subjetivas persistentes."
+  },
+  "BIPOLAR (Espectro Maníaco Ativo)": {
+    "titulo": "BIPOLAR (Espectro Maníaco Ativo)",
+    "texto": "Elevação predominante no polo de ativação do espectro do humor (humor, energia e/ou cognição expansiva). Esse padrão sugere aumento da probabilidade de pertencimento ao espectro bipolar em modelos dimensionais, que descrevem um contínuo de sintomas de ativação além das categorias estritas de episódio. Escores elevados nessa dimensão auxiliam a diferenciação de apresentações predominantemente não-bipolares, sem, isoladamente, estabelecer diagnóstico categorial. A presença de prejuízo funcional reforça a relevância clínica do achado e a necessidade de avaliar o impacto sobre o funcionamento cotidiano."
+  },
+  "BIPOLAR (Espectro Maníaco Ativo com Alta Desregulação Circadiana)": {
+    "titulo": "BIPOLAR (Espectro Maníaco Ativo com Alta Desregulação Circadiana)",
+    "texto": "Elevação predominante no polo de ativação do espectro do humor, acompanhada de marcadores de desregulação de ritmicidade e ciclos biológicos. Na literatura de espectro, a combinação de ativação com instabilidade circadiana associa-se frequentemente a maior vulnerabilidade a oscilações do curso. Esse padrão aumenta a probabilidade dimensional de pertencimento ao espectro bipolar, sem equivaler a um diagnóstico categorial. Quando há prejuízo funcional, merece atenção especial a possibilidade de que a recuperação cognitiva e ocupacional não acompanhe plenamente a redução dos sintomas de ativação."
+  },
+  "Depressivo (Espectro Depressivo Unipolar)": {
+    "titulo": "Depressivo (Espectro Depressivo Unipolar)",
+    "texto": "Elevação concentrada no polo depressivo (humor, energia e cognição), com ritmicidade relativamente preservada. O perfil sugere predominância de sintomatologia do espectro depressivo, com menor indício dimensional de bipolaridade na presente avaliação. A interpretação deve considerar o contexto clínico e a evolução longitudinal, uma vez que apresentações depressivas podem, em alguns casos, revelar componentes de espectro bipolar em avaliações subsequentes."
+  },
+  "Depressivo (componente do Espectro Bipolar)": {
+    "titulo": "Depressivo (componente do Espectro Bipolar)",
+    "texto": "Polo depressivo elevado associado a desregulação de ritmicidade. Na literatura de espectro do humor, a combinação de sintomas depressivos com instabilidade circadiana ou cíclica constitui um marcador que orienta atenção à possibilidade de componente bipolar, inclusive em apresentações que não preenchem critérios clássicos de mania ou hipomania. A avaliação do prejuízo funcional auxilia a distinguir a carga sintomática do impacto real sobre o funcionamento. O achado é dimensional e não estabelece, por si só, diagnóstico categorial de transtorno bipolar."
+  },
+  "Transtorno Depressivo com Características Mistas e Indícios de Espectro Bipolar": {
+    "titulo": "Transtorno Depressivo com Características Mistas e Indícios de Espectro Bipolar",
+    "texto": "Alta carga total no espectro, com elevação simultânea de sintomas depressivos e de ritmicidade. Esse padrão aproxima-se de descrições dimensionais de estados mistos ou de depressão no espectro bipolar, nas quais sintomas de polaridades distintas e instabilidade biológica podem coexistir. A presença de prejuízo funcional reforça a relevância clínica e a importância de acompanhar a recuperação cognitiva e ocupacional, que pode não ser completa mesmo com redução parcial dos sintomas. Trata-se de um indicador dimensional, não de um diagnóstico categorial fechado."
+  },
+  "Espectro Afetivo Altamente Instável (Subsindrômico)": {
+    "titulo": "Espectro Afetivo Altamente Instável (Subsindrômico)",
+    "texto": "Não se observa fechamento dos polos maníaco ou depressivo nos limiares adotados, porém há elevação de ritmicidade e carga total relevante. Esse perfil é compatível com vulnerabilidade de espectro ou com traço de instabilidade afetivo-circadiana, situação em que instrumentos dimensionais são particularmente informativos. A ritmicidade elevada, mesmo sem fechamento de polo, constitui informação clinicamente útil, mas não permite concluir a presença de um transtorno do humor categorial. Recomenda-se interpretação no contexto longitudinal e consideração de outros fatores que possam contribuir para a instabilidade observada."
+  },
+  "Sintomatologia Leve / Inespecífica": {
+    "titulo": "Sintomatologia Leve / Inespecífica",
+    "texto": "Sintomatologia presente em nível leve ou dispersa, sem atingir os limiares dimensionais de polo ou de ritmicidade crítica. Os achados não permitem equiparar o perfil a um transtorno categorial do humor. Recomenda-se interpretar os resultados no contexto clínico global e longitudinal, considerando a possibilidade de que sintomas leves ou inespecíficos decorram de múltiplos fatores e possam ou não evoluir ao longo do tempo."
+  }
+}

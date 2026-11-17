@@ -1,0 +1,1346 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+MOODMETRICS – Versão (72 itens + 7 filtros dinâmicos)
+Instrumento de Avaliação do Espectro do Humor
+
+Filtros de prejuízo funcional dinâmicos e integrados à interpretação.
+"""
+
+import streamlit as st
+from datetime import datetime
+from pathlib import Path
+import json
+import matplotlib.pyplot as plt
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+
+# Caminhos configuráveis (relativos à pasta do app)
+BASE_DIR = Path(__file__).parent
+ARQUIVO_TEXTOS = BASE_DIR / "textos_diagnosticos.json"
+# Pasta de citações (opcional). No ambiente web pode ficar vazia ou apontar para uma pasta relativa.
+DEFAULT_CITACOES = BASE_DIR / "citacoes"  # crie a pasta e coloque os .txt se quiser bibliografia
+
+def carregar_textos_diagnosticos() -> dict:
+    """Carrega textos estáticos dos diagnósticos a partir do JSON."""
+    if ARQUIVO_TEXTOS.exists():
+        try:
+            with open(ARQUIVO_TEXTOS, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+TEXTOS_DIAGNOSTICOS = carregar_textos_diagnosticos()
+
+def carregar_interferencias() -> dict:
+    """Carrega o template de interferências (pergunta | comorbidade | diagnóstico → texto)."""
+    # Procura em vários locais possíveis
+    candidatos = [
+        Path(__file__).parent / "Comorbidades" / "interferencias_template.md",
+        Path(__file__).parent.parent / "Comorbidades" / "interferencias_template.md",
+    ]
+    path = None
+    for c in candidatos:
+        if c.exists():
+            path = c
+            break
+    if not path:
+        return {}
+    try:
+        texto = path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return {}
+    interf = {}
+    atual = None
+    linhas = []
+    for linha in texto.splitlines():
+        if linha.startswith("## "):
+            if atual and linhas:
+                interf[atual] = " ".join(linhas).strip()
+            partes = [p.strip() for p in linha[3:].split("|")]
+            if len(partes) == 3:
+                atual = (partes[0], partes[1], partes[2])  # (pergunta, cm, dx)
+            else:
+                atual = None
+            linhas = []
+        elif atual and linha.strip() and not linha.startswith("#"):
+            linhas.append(linha.strip())
+    if atual and linhas:
+        interf[atual] = " ".join(linhas).strip()
+    return interf
+
+
+INTERFERENCIAS = carregar_interferencias()
+
+# Mapa de títulos de diagnóstico para códigos DX
+DX_MAPA = {
+    "Saudável / Ruído": "DX_01",
+    "BIPOLAR (Espectro Maníaco Ativo)": "DX_02",
+    "BIPOLAR (Espectro Maníaco Ativo com Alta Desregulação Circadiana)": "DX_03",
+    "Depressivo (Espectro Depressivo Unipolar)": "DX_04",
+    "Depressivo (componente do Espectro Bipolar)": "DX_05",
+    "Transtorno Depressivo com Características Mistas e Indícios de Espectro Bipolar": "DX_06",
+    "Espectro Afetivo Altamente Instável (Subsindrômico)": "DX_07",
+    "Sintomatologia Leve / Inespecífica": "DX_08",
+}
+
+def carregar_citacoes(pasta: Path | str | None = None) -> list[str]:
+    """Lê arquivos .txt de citação (01.txt, 02.txt...) e retorna lista ordenada."""
+    pasta = Path(pasta) if pasta else DEFAULT_CITACOES
+    if not pasta.exists() or not pasta.is_dir():
+        return []
+    citacoes = []
+    for p in sorted(pasta.glob("*.txt")):
+        try:
+            texto = p.read_text(encoding="utf-8", errors="ignore").strip()
+        except Exception:
+            try:
+                texto = p.read_text(encoding="latin-1", errors="ignore").strip()
+            except Exception:
+                continue
+        if texto:
+            citacoes.append(texto)
+    return citacoes
+
+# ============================================================
+# DADOS DOS ITENS (texto completo + label curto + bloco)
+# ============================================================
+
+ITEMS = {
+    # --- Humor Depressivo (HD) ---
+    "HD01": {
+        "label": "Tristeza",
+        "texto": "...você se sentiu persistentemente triste, vazio, desanimado, sério ou frustrado e derrotado, mesmo sem conseguir identificar um motivo claro, como se tudo tivesse perdido o significado?",
+        "bloco": "HD",
+    },
+    "HD02": {
+        "label": "Solidão",
+        "texto": "...você se sentiu profundamente nostálgico ou sozinho, mesmo sem ter sofrido nenhuma perda real de amigos ou entes queridos?",
+        "bloco": "HD",
+    },
+    "HD03": {
+        "label": "Anedonia",
+        "texto": "...você se sentiu muito entediado ou perdeu completamente o interesse e a capacidade de sentir prazer nas coisas que costumava gostar (como hobbies, jogos, esportes ou momentos de lazer)?",
+        "bloco": "HD",
+    },
+    "HD04": {
+        "label": "Irritabilidade",
+        "texto": "...você ficou profundamente irritado com tudo ou se pegou constantemente se queixando e reclamando das coisas?",
+        "bloco": "HD",
+    },
+    "HD05": {
+        "label": "Vulnerabilidade",
+        "texto": "...você se sentiu tão sensível ou vulnerável que a menor coisa era capaz de deixá-lo triste ou fazê-lo chorar com muita facilidade?",
+        "bloco": "HD",
+    },
+    "HD06": {
+        "label": "Sensibilidade",
+        "texto": "...você achou extraordinariamente difícil lidar com rejeições, particularmente aquelas que envolviam amizades ou relacionamentos românticos?",
+        "bloco": "HD",
+    },
+    "HD07": {
+        "label": "Negligência",
+        "texto": "...você perdeu o interesse na sua aparência pessoal ou sentiu que nada do que vestia parecia bom ou caía bem?",
+        "bloco": "HD",
+    },
+    "HD08": {
+        "label": "Somatização",
+        "texto": "...seu humor ficava deprimido quando você tinha algum tipo de problema médico físico, como uma gripe ou um resfriado?",
+        "bloco": "HD",
+    },
+    "HD09": {
+        "label": "Substâncias",
+        "texto": "...seu humor ficava deprimido em decorrência do uso, aumento ou interrupção (mesmo dentro de um mês após parar) de medicamentos não psiquiátricos, álcool, pílulas para dormir, ansiolíticos ou outras substâncias?",
+        "bloco": "HD",
+    },
+    "HD10": {
+        "label": "Isolamento",
+        "texto": "...você perdeu o interesse na sua vida social, preferindo ficar sozinho e se afastar de amigos/família, ou achou muito difícil fazer novas amizades?",
+        "bloco": "HD",
+    },
+    "HD11": {
+        "label": "Relacionamento",
+        "texto": "...você perdeu o interesse na sua vida romântica ou percebeu que sempre teve uma vida amorosa muito limitada ou restrita?",
+        "bloco": "HD",
+    },
+    "HD12": {
+        "label": "Apatia",
+        "texto": "...você se sentiu completamente indiferente a respeito de tudo (seja positivo ou negativo) que acontecia com você ou com sua família?",
+        "bloco": "HD",
+    },
+
+    # --- Humor Maníaco (HM) ---
+    "HM13": {
+        "label": "Euforia",
+        "texto": "...você se sentiu persistentemente bem, eufórico ou 'animado' (high), a ponto de a menor coisa deixá-lo muito entusiasmado?",
+        "bloco": "HM",
+    },
+    "HM14": {
+        "label": "Humor aguçado",
+        "texto": "...seu senso de humor estava extremamente aguçado, fazendo com que você gostasse de fazer trocadilhos, jogos de palavras ou muitas piadas (mesmo inadequadas ou fora de hora)?",
+        "bloco": "HM",
+    },
+    "HM15": {
+        "label": "Intrusividade",
+        "texto": "...você se comportou de forma intrusiva, inconveniente ou insultuosa, ou buscou ser o centro das atenções de maneira particularmente sedutora ou paqueradora?",
+        "bloco": "HM",
+    },
+    "HM16": {
+        "label": "Gastos",
+        "texto": "...você achou muito prazeroso e fácil comprar coisas desnecessárias ou dar muitos presentes, mesmo sem ter condições financeiras para isso?",
+        "bloco": "HM",
+    },
+    "HM17": {
+        "label": "Extroversão",
+        "texto": "...você esteve especialmente extrovertido, comunicativo e atraente para os outros, organizando muitos eventos/festas ou fazendo novos amigos com facilidade?",
+        "bloco": "HM",
+    },
+    "HM18": {
+        "label": "Intensidade afetiva",
+        "texto": "...você teve ou manteve um padrão de vida romântica e afetiva particularmente intensa?",
+        "bloco": "HM",
+    },
+    "HM19": {
+        "label": "Aparência extravagante",
+        "texto": "...você usou roupas ou um corte de cabelo que era dramático, extravagante, de alta moda ou muito incomum?",
+        "bloco": "HM",
+    },
+    "HM20": {
+        "label": "Múltiplos projetos",
+        "texto": "...você esteve cheio de planos e envolvido em múltiplos projetos ao mesmo tempo, achando muito difícil dizer 'não' a novas oportunidades sociais ou de negócios?",
+        "bloco": "HM",
+    },
+    "HM21": {
+        "label": "Mudanças frequentes",
+        "texto": "...você mudou com frequência incomum de emprego, local de residência, grupo de amigos, esportes ou hobbies?",
+        "bloco": "HM",
+    },
+    "HM22": {
+        "label": "Busca de risco",
+        "texto": "...você buscou atividades arriscadas, perigosas ou de forte emoção, ou tendia a fazer o oposto do que as pessoas queriam, agindo como o 'advogado do diabo'?",
+        "bloco": "HM",
+    },
+    "HM23": {
+        "label": "Labilidade / Irritabilidade",
+        "texto": "...seu humor oscilou rapidamente (como chorar e rir ao mesmo tempo), ficando extremamente irritável, sarcástico, argumentativo ou com dificuldade de controlar o temperamento e brigando por motivos banais?",
+        "bloco": "HM",
+    },
+    "HM24": {
+        "label": "Humor por substâncias/saúde",
+        "texto": "...seu humor ficou irritável ou elevado em decorrência de problemas de saúde física, uso/aumento de medicamentos, álcool, estimulantes ou outras substâncias (ou durante a retirada delas)?",
+        "bloco": "HM",
+    },
+
+    # --- Energia Depressiva (ED) ---
+    "ED25": {
+        "label": "Inércia matinal",
+        "texto": "...você teve grande dificuldade para começar qualquer atividade ou para conseguir sair da cama pela manhã?",
+        "bloco": "ED",
+    },
+    "ED26": {
+        "label": "Lentificação",
+        "texto": "...você se sentiu fisicamente 'desacelerado', percebendo que seus movimentos, sua fala, seu pensamento ou a própria passagem do tempo pareciam em câmera lenta?",
+        "bloco": "ED",
+    },
+    "ED27": {
+        "label": "Passividade",
+        "texto": "...você se sentiu passivo e vagaroso, deixando de cumprir seus compromissos e negligenciando seus cuidados pessoais básicos (como banho, barba ou vestuário)?",
+        "bloco": "ED",
+    },
+    "ED28": {
+        "label": "Fadiga extrema",
+        "texto": "...você se sentiu extremamente fatigado, fraco ou exausto, como se a menor tarefa cotidiana exigisse um esforço imenso?",
+        "bloco": "ED",
+    },
+    "ED29": {
+        "label": "Agitação interna",
+        "texto": "...embora estivesse totalmente sem energia, você sentia uma agitação interna que tornava difícil ficar sentado/deitado ou o forçava a andar constantemente de um lado para o outro?",
+        "bloco": "ED",
+    },
+
+    # --- Energia Maníaca (EM) ---
+    "EM30": {
+        "label": "Pressão para falar",
+        "texto": "...você sentiu um impulso irresistível de se comunicar (por chamadas, mensagens ou e-mails), reatar contatos antigos, falar excessivamente rápido e alto ou ser tão barulhento a ponto de incomodar os outros?",
+        "bloco": "EM",
+    },
+    "EM31": {
+        "label": "Pensamentos acelerados",
+        "texto": "...seus pensamentos pareciam estar tão acelerados que as ideias vinham com facilidade incomum e em tal quantidade que você achava difícil expressá-las?",
+        "bloco": "EM",
+    },
+    "EM32": {
+        "label": "Distratibilidade",
+        "texto": "...seu interesse mudava constantemente de uma coisa para outra, fazendo com que você se distraísse facilmente e não conseguisse concluir tarefas simples (como ler um artigo ou assistir a um programa)?",
+        "bloco": "EM",
+    },
+    "EM33": {
+        "label": "Assertividade excessiva",
+        "texto": "...você se dedicou de forma intensa e compenetrada a causas sociais, políticas ou religiosas, ou se comportou de maneira excessivamente assertiva ou impositiva?",
+        "bloco": "EM",
+    },
+    "EM34": {
+        "label": "Energia inesgotável",
+        "texto": "...você se sentiu com um vigor inesgotável e uma energia tão alta que parecia nunca se cansar, chegando a exaurir ou irritar as pessoas ao seu redor?",
+        "bloco": "EM",
+    },
+    "EM35": {
+        "label": "Impaciência",
+        "texto": "...você se sentiu extremamente impaciente com o ritmo ou com a lentidão dos outros?",
+        "bloco": "EM",
+    },
+
+    # --- Cognição Depressiva (CD) ---
+    "CD36": {
+        "label": "Hipercriticismo",
+        "texto": "...você esteve hipercrítico ou cético em relação a tudo, excessivamente preocupado com seus próprios problemas ou com um medo constante de errar?",
+        "bloco": "CD",
+    },
+    "CD37": {
+        "label": "Inutilidade",
+        "texto": "...você se sentiu inútil, desapontado consigo mesmo, excessivamente preocupado com dinheiro (mesmo sem problemas reais) ou sentiu necessidade de buscar refúgio na religião/oração?",
+        "bloco": "CD",
+    },
+    "CD38": {
+        "label": "Alteração corporal",
+        "texto": "...você sentiu como se seu corpo estivesse fisicamente doente ou de alguma forma transformado?",
+        "bloco": "CD",
+    },
+    "CD39": {
+        "label": "Déficit cognitivo",
+        "texto": "...você teve falhas marcantes de memória, mente nebulosa, confusão ou grande dificuldade para pensar, ler, fazer contas e se concentrar?",
+        "bloco": "CD",
+    },
+    "CD40": {
+        "label": "Queda de desempenho",
+        "texto": "...seu desempenho no trabalho, estudos, tarefas domésticas ou hobbies piorou significativamente (sem causa médica física)?",
+        "bloco": "CD",
+    },
+    "CD41": {
+        "label": "Indecisão",
+        "texto": "...você sentiu uma grande dificuldade ou paralisia para tomar até mesmo decisões menores e banais do dia a dia?",
+        "bloco": "CD",
+    },
+    "CD42": {
+        "label": "Culpa",
+        "texto": "...você se sentiu intensamente culpado, assumindo a culpa por problemas alheios, remoendo coisas do passado ou sentindo que deveria ser punido?",
+        "bloco": "CD",
+    },
+    "CD43": {
+        "label": "Perseguição / Hostilidade",
+        "texto": "...você sentiu que os outros eram a causa dos seus problemas ou que estava cercado de hostilidade, sentindo-se julgado, observado, falado ou perseguido por todos?",
+        "bloco": "CD",
+    },
+    "CD44": {
+        "label": "Alucinações auditivas",
+        "texto": "...você ouviu claramente vozes que falavam contra você, eram hostis ou o xingavam?",
+        "bloco": "CD",
+    },
+    "CD45": {
+        "label": "Desesperança",
+        "texto": "...você viu o futuro como sombrio/sem esperança, sentiu vontade de fugir sem rumo da sua vida ou usou o sono como uma forma de fuga?",
+        "bloco": "CD",
+    },
+    "CD46": {
+        "label": "Desejo de morte",
+        "texto": "...você sentiu que a vida não valia a pena, desejando não acordar pela manhã ou torcendo para morrer de um acidente ou doença?",
+        "bloco": "CD",
+    },
+    "CD47": {
+        "label": "Ideação suicida",
+        "texto": "...você pensou ativamente em querer morrer, se machucar ou chegou a formular um plano específico para se matar?",
+        "bloco": "CD",
+    },
+    "CD48": {
+        "label": "Tentativa de suicídio",
+        "texto": "...você de fato fez uma tentativa real de suicídio (tenha precisado ou não de atendimento médico)?",
+        "bloco": "CD",
+    },
+
+    # --- Cognição Maníaca (CM) ---
+    "CM49": {
+        "label": "Criatividade / Inspiração",
+        "texto": "...você se sentiu extremamente inspirado, artístico, criativo ou com uma sensibilidade espiritual e conexão profunda com as formas da natureza?",
+        "bloco": "CM",
+    },
+    "CM50": {
+        "label": "Produtividade / Aparência",
+        "texto": "...sua produtividade e curiosidade aumentaram drasticamente e você se sentiu extremamente bem com a sua própria aparência?",
+        "bloco": "CM",
+    },
+    "CM51": {
+        "label": "Grandiosidade leve",
+        "texto": "...você se sentiu mentalmente brilhante, altamente autoconfiante, carismático, com convicção inabalável de estar certo e imune a críticas?",
+        "bloco": "CM",
+    },
+    "CM52": {
+        "label": "Leitura de intenções",
+        "texto": "...você achou que podia ler ou conhecer a mente e intenções dos outros, ou se sentiu injustiçado porque as pessoas não compreendiam suas ideias otimistas?",
+        "bloco": "CM",
+    },
+    "CM53": {
+        "label": "Grandiosidade / Invulnerabilidade",
+        "texto": "...você teve sentimentos de grandiosidade, superioridade, poderes extraordinários ou sensação de ser fisicamente invulnerável a acidentes e doenças?",
+        "bloco": "CM",
+    },
+    "CM54": {
+        "label": "Experiências místicas",
+        "texto": "...você teve vivências místicas, visões, percepção extrassensorial (PES) ou a sensação de ter acesso direto à verdade e ao sentido do universo?",
+        "bloco": "CM",
+    },
+    "CM55": {
+        "label": "Vozes positivas",
+        "texto": "...você ouviu vozes que o inspiravam ou o elogiavam?",
+        "bloco": "CM",
+    },
+    "CM56": {
+        "label": "Irresponsabilidade",
+        "texto": "...você agiu (ou foi julgado pelos outros como agindo) de forma irresponsável?",
+        "bloco": "CM",
+    },
+    "CM57": {
+        "label": "Impulsividade grave",
+        "texto": "...você tomou decisões importantes precipitadamente ou agiu com impulsividade grave (gastos excessivos, direção perigosa, negócios arriscados)?",
+        "bloco": "CM",
+    },
+    "CM58": {
+        "label": "Desrespeito a regras",
+        "texto": "...você teve a intenção deliberada de ignorar regras sociais, etiqueta ou se envolveu em atividades ilegais?",
+        "bloco": "CM",
+    },
+
+    # --- Ritmicidade (RIT) ---
+    "RIT59": {
+        "label": "Cronotipo / Produtividade",
+        "texto": "Você sente uma dificuldade marcante (acima do comum) para trabalhar ou ser produtivo logo no início da manhã ou no período da noite/madrugada?",
+        "bloco": "RIT",
+    },
+    "RIT60": {
+        "label": "Necessidade de rotina",
+        "texto": "Você percebe que se adapta muito melhor e seu humor melhora com uma rotina regular, ou fica muito irritável se sua rotina diária for interrompida?",
+        "bloco": "RIT",
+    },
+    "RIT61": {
+        "label": "Energia após privação de sono",
+        "texto": "Se por algum motivo você dormir muito menos do que o normal, você percebe que no dia seguinte se sente com mais energia em vez de cansado?",
+        "bloco": "RIT",
+    },
+    "RIT62": {
+        "label": "Sensibilidade climática/sazonal",
+        "texto": "Seu humor, energia ou bem-estar físico mudam de forma previsível em resposta ao clima ou às estações do ano?",
+        "bloco": "RIT",
+    },
+    "RIT63": {
+        "label": "Hipersonia",
+        "texto": "...você apresentou hipersonia, sentindo-se sonolento o tempo todo ou precisando de muito mais sono do que o habitual (sem relação com trabalho)?",
+        "bloco": "RIT",
+    },
+    "RIT64": {
+        "label": "Insônia",
+        "texto": "...você apresentou insônia marcante (dificuldade para pegar no sono, despertares no meio da noite ou acordar muito mais cedo do que o desejado)?",
+        "bloco": "RIT",
+    },
+    "RIT65": {
+        "label": "Privação de sono sem cansaço",
+        "texto": "...você passou dias dormindo muito menos do que o habitual (ou sem dormir nada) e mesmo assim não se sentia cansado?",
+        "bloco": "RIT",
+    },
+    "RIT66": {
+        "label": "Sono após estímulos",
+        "texto": "...você teve muita dificuldade para dormir antes ou depois de eventos ou atividades estimulantes (como viagens, férias, novos trabalhos)?",
+        "bloco": "RIT",
+    },
+    "RIT67": {
+        "label": "Sono sazonal / fuso",
+        "texto": "...o seu padrão e necessidade de sono mudaram significativamente com as estações do ano ou ao cruzar fusos horários?",
+        "bloco": "RIT",
+    },
+    "RIT68": {
+        "label": "Sono e ciclo menstrual",
+        "texto": "...o seu padrão e necessidade de sono oscilaram visivelmente ao longo do seu ciclo menstrual?",
+        "bloco": "RIT",
+        "tri_state": True,  # Sim / Não / Não se aplica — só Sim pontua
+    },
+    "RIT69": {
+        "label": "Apetite / Peso",
+        "texto": "...seu apetite ou peso oscilaram significativamente (perda de apetite, aumento de peso ou fissura/compulsão por doces e carboidratos)?",
+        "bloco": "RIT",
+    },
+    "RIT70": {
+        "label": "Queda de libido",
+        "texto": "...você apresentou queda de libido, menor atividade sexual, dificuldade de excitação ou anorgasmia?",
+        "bloco": "RIT",
+    },
+    "RIT71": {
+        "label": "Aumento de libido",
+        "texto": "...você esteve significativamente mais interessado em sexo ou apresentou alta rotatividade de parceiros sexuais?",
+        "bloco": "RIT",
+    },
+    "RIT72": {
+        "label": "Sintomas físicos recorrentes",
+        "texto": "...você apresentou sintomas físicos recorrentes (dores de cabeça, boca seca, constipação, náuseas) ou alterações de sensibilidade ao calor, frio e dor?",
+        "bloco": "RIT",
+    },
+}
+
+# Ordem dos blocos e nomes de exibição
+BLOCOS = [
+    ("HD", "Humor Depressivo (HD)", ["HD01", "HD02", "HD03", "HD04", "HD05", "HD06", "HD07", "HD08", "HD09", "HD10", "HD11", "HD12"]),
+    ("HM", "Humor Maníaco (HM)", ["HM13", "HM14", "HM15", "HM16", "HM17", "HM18", "HM19", "HM20", "HM21", "HM22", "HM23", "HM24"]),
+    ("ED", "Energia Depressiva (ED)", ["ED25", "ED26", "ED27", "ED28", "ED29"]),
+    ("EM", "Energia Maníaca (EM)", ["EM30", "EM31", "EM32", "EM33", "EM34", "EM35"]),
+    ("CD", "Cognição Depressiva (CD)", ["CD36", "CD37", "CD38", "CD39", "CD40", "CD41", "CD42", "CD43", "CD44", "CD45", "CD46", "CD47", "CD48"]),
+    ("CM", "Cognição Maníaca (CM)", ["CM49", "CM50", "CM51", "CM52", "CM53", "CM54", "CM55", "CM56", "CM57", "CM58"]),
+    ("RIT", "Ritmicidade (RIT)", ["RIT59", "RIT60", "RIT61", "RIT62", "RIT63", "RIT64", "RIT65", "RIT66", "RIT67", "RIT68", "RIT69", "RIT70", "RIT71", "RIT72"]),
+]
+
+FILTRO_CODIGO = {
+    "HD": "FHD",
+    "HM": "FHM",
+    "ED": "FED",
+    "EM": "FEM",
+    "CD": "FCD",
+    "CM": "FCM",
+    "RIT": "FRIT",
+}
+
+NOME_BLOCO = {b[0]: b[1] for b in BLOCOS}
+
+# ============================================================
+# GERAÇÃO DINÂMICA DO TEXTO DO FILTRO
+# ============================================================
+
+def gerar_texto_filtro(bloco: str, respostas: dict) -> str | None:
+    """Retorna o texto dinâmico do filtro ou None se nenhum sintoma positivo.
+
+    Regras (proposta do pesquisador):
+    - 1 a 3 sintomas → lista todos
+    - 4 a 6 sintomas → 3 primeiros + “e outros sintomas”
+    - 7 ou mais → formulação genérica
+    """
+    codigos = next(c for b, _, c in BLOCOS if b == bloco)
+    positivos = [ITEMS[c]["label"] for c in codigos if respostas.get(c, 0) == 1]
+    n = len(positivos)
+    if n == 0:
+        return None
+
+    # Nome curto do domínio para a frase genérica
+    nome_curto = {
+        "HD": "humor depressivo",
+        "HM": "humor maníaco",
+        "ED": "energia depressiva",
+        "EM": "energia maníaca",
+        "CD": "cognição depressiva",
+        "CM": "cognição maníaca",
+        "RIT": "ritmicidade",
+    }.get(bloco, NOME_BLOCO.get(bloco, bloco))
+
+    if n <= 3:
+        lista = ", ".join(f'"{p}"' for p in positivos)
+        return (
+            f'Você indicou sentir {lista}, você diria que ficou seriamente '
+            f"prejudicado, preocupado ou perturbado pelo que estava acontecendo com você?"
+        )
+    if n <= 6:
+        lista = ", ".join(f'"{p}"' for p in positivos[:3])
+        return (
+            f'Você indicou sentir {lista} e outros sintomas, você diria que ficou seriamente '
+            f"prejudicado, preocupado ou perturbado pelo que estava acontecendo com você?"
+        )
+    return (
+        f"Você relatou vários sintomas de {nome_curto}, diria que ficou seriamente "
+        f"prejudicado, preocupado ou perturbado pelo que estava acontecendo com você?"
+    )
+
+
+def construir_sequencia(respostas: dict | None = None) -> list[dict]:
+    """
+    Constrói a sequência de perguntas + filtros.
+    No modo Wizard, os filtros só entram se já houver respostas do bloco
+    (ou são inseridos após o bloco quando o usuário chega lá).
+    Para a lista completa (modo formulário) usamos placeholders.
+    """
+    seq = []
+    for bloco_id, nome, codigos in BLOCOS:
+        for c in codigos:
+            seq.append({"tipo": "item", "codigo": c, "bloco": bloco_id, "nome_secao": nome})
+        # Placeholder do filtro (será resolvido dinamicamente)
+        seq.append({"tipo": "filtro", "codigo": FILTRO_CODIGO[bloco_id], "bloco": bloco_id, "nome_secao": nome})
+    return seq
+
+
+# ============================================================
+# CÁLCULO DE ESCORES E INTERPRETAÇÃO
+# ============================================================
+
+def calcular_escores(respostas: dict) -> dict:
+    HD = sum(respostas.get(k, 0) for k in ["HD01", "HD02", "HD03", "HD04", "HD05", "HD06", "HD07", "HD08", "HD09", "HD10", "HD11", "HD12"])
+    HM = sum(respostas.get(k, 0) for k in ["HM13", "HM14", "HM15", "HM16", "HM17", "HM18", "HM19", "HM20", "HM21", "HM22", "HM23", "HM24"])
+    ED = sum(respostas.get(k, 0) for k in ["ED25", "ED26", "ED27", "ED28", "ED29"])
+    EM = sum(respostas.get(k, 0) for k in ["EM30", "EM31", "EM32", "EM33", "EM34", "EM35"])
+    CD = sum(respostas.get(k, 0) for k in ["CD36", "CD37", "CD38", "CD39", "CD40", "CD41", "CD42", "CD43", "CD44", "CD45", "CD46", "CD47", "CD48"])
+    CM = sum(respostas.get(k, 0) for k in ["CM49", "CM50", "CM51", "CM52", "CM53", "CM54", "CM55", "CM56", "CM57", "CM58"])
+    # RIT68 pode ser 1 (Sim), 0 (Não) ou "NA" (Não se aplica) — só Sim pontua
+    def ponto_rit(codigo):
+        v = respostas.get(codigo, 0)
+        return 1 if v == 1 else 0
+
+    RIT = sum(ponto_rit(k) for k in ["RIT59", "RIT60", "RIT61", "RIT62", "RIT63", "RIT64", "RIT65", "RIT66", "RIT67", "RIT68", "RIT69", "RIT70", "RIT71", "RIT72"])
+
+    M = HM + EM + CM
+    D = HD + ED + CD
+    T = M + D + RIT
+
+    # Travas (1 = positiva, 0 = negativa, None = não aplicável / não respondida)
+    travas = {}
+    for bloco_id in ["HD", "HM", "ED", "EM", "CD", "CM", "RIT"]:
+        fc = FILTRO_CODIGO[bloco_id]
+        if fc in respostas:
+            travas[bloco_id] = respostas[fc]
+        else:
+            # Se nenhum sintoma positivo, trava não se aplica
+            codigos = next(c for b, _, c in BLOCOS if b == bloco_id)
+            if any(respostas.get(c, 0) == 1 for c in codigos):
+                travas[bloco_id] = None  # deveria ter respondido, mas não
+            else:
+                travas[bloco_id] = 0  # não aplicável → trata como negativa
+
+    return {
+        "HD": HD, "HM": HM, "ED": ED, "EM": EM,
+        "CD": CD, "CM": CM, "RIT": RIT,
+        "M": M, "D": D, "T": T,
+        "travas": travas,
+    }
+
+
+def faixa_rit(rit: int) -> str:
+    if rit <= 2:
+        return "Preservada / Normal"
+    if rit <= 4:
+        return "Zona de Alerta (padrão comum em unipolares)"
+    return "Desregulação Crítica (marcador de espectro bipolar)"
+
+
+def interpretar(escores: dict) -> tuple[str, str]:
+    """
+    Retorna (título diagnóstico curto, texto enriquecido + nível de impacto).
+    Cortes proporcionais à matriz original de 154 itens.
+    """
+    M, D, T, RIT = escores["M"], escores["D"], escores["T"], escores["RIT"]
+    travas = escores["travas"]
+
+    def trava_positiva(*blocos):
+        return any(travas.get(b) == 1 for b in blocos)
+
+    # Classificação dimensional (hierarquia)
+    if T < 16:
+        titulo = "Saudável / Ruído"
+        texto = (
+            "Perfil dentro da variabilidade esperada do espectro do humor. "
+            "A carga sintomatológica total situa-se abaixo do limiar de elevação significativa, "
+            "sem evidência de desregulação dimensional clinicamente relevante no momento da avaliação."
+        )
+        nivel = "Sem relevância clínica"
+
+    elif M >= 14:
+        if RIT >= 5:
+            titulo = "BIPOLAR (Espectro Maníaco Ativo com Alta Desregulação Circadiana)"
+            texto = (
+                "Elevação predominante no polo maníaco/hipomaníaco do espectro do humor "
+                "(humor, energia e/ou cognição expansiva), com marcadores adicionais de desregulação "
+                "de ritmicidade/ciclos biológicos, frequentemente associados na literatura de espectro "
+                "a maior instabilidade do curso. Esse padrão é compatível com ativação do espectro bipolar, "
+                "alinhado a abordagens dimensionais que descrevem um contínuo de sintomas maníacos "
+                "além das categorias estritas de episódio."
+            )
+        else:
+            titulo = "BIPOLAR (Espectro Maníaco Ativo)"
+            texto = (
+                "Elevação predominante no polo maníaco/hipomaníaco do espectro do humor "
+                "(humor, energia e/ou cognição expansiva). Esse padrão é compatível com ativação "
+                "do espectro bipolar, alinhado a abordagens dimensionais que descrevem um contínuo "
+                "de sintomas maníacos além das categorias estritas de episódio."
+            )
+        nivel = "Clínico" if trava_positiva("HM", "EM", "CM", "RIT") else "Espectro / traço (sem prejuízo funcional significativo reportado)"
+
+    elif D >= 17:
+        if RIT >= 5 and T >= 40:
+            titulo = "Transtorno Depressivo com Características Mistas e Indícios de Espectro Bipolar"
+            texto = (
+                "Alta carga total no espectro, com depressão e ritmicidade elevadas. "
+                "Esse padrão aproxima-se de descrições de estados mistos ou de depressão no espectro bipolar, "
+                "em que sintomas de polaridades distintas e instabilidade biológica coexistem ao longo do tempo."
+            )
+        elif RIT >= 5:
+            titulo = "Depressivo (componente do Espectro Bipolar)"
+            texto = (
+                "Polo depressivo elevado associado a desregulação de ritmicidade. "
+                "Na literatura de espectro do humor, a combinação de depressão com instabilidade circadiana/cíclica "
+                "é um marcador que orienta atenção à possibilidade de componente bipolar, inclusive em apresentações "
+                "que não preenchem mania clássica."
+            )
+        else:
+            titulo = "Depressivo (Espectro Depressivo Unipolar)"
+            texto = (
+                "Elevação concentrada no polo depressivo (humor, energia e cognição), com ritmicidade relativamente preservada. "
+                "O perfil sugere sintomatologia do espectro depressivo com menor indício dimensional de bipolaridade "
+                "na presente avaliação."
+            )
+        nivel = "Clínico" if trava_positiva("HD", "ED", "CD", "RIT") else "Espectro / traço (sem prejuízo funcional significativo reportado)"
+
+    elif M < 14 and D < 17 and RIT >= 5 and T >= 28:
+        titulo = "Espectro Afetivo Altamente Instável (Subsindrômico)"
+        texto = (
+            "Sem fechamento dos polos maníaco ou depressivo nos cortes adotados, porém com ritmicidade elevada "
+            "e carga total relevante. Compatível com vulnerabilidade de espectro ou traço de instabilidade "
+            "afetivo-circadiana, situação em que instrumentos dimensionais são especialmente informativos."
+        )
+        nivel = "Clínico" if trava_positiva("RIT") else "Espectro / traço"
+
+    else:
+        titulo = "Sintomatologia Leve / Inespecífica"
+        texto = (
+            "Sintomatologia presente em nível leve ou dispersa, sem atingir os limiares dimensionais "
+            "de polo ou de ritmicidade crítica. Recomenda-se interpretar no contexto clínico e longitudinal, "
+            "sem equiparar a um transtorno categorial."
+        )
+        # Verifica se há prejuízo reportado em qualquer trava
+        if any(travas.get(b) == 1 for b in ["HD", "HM", "ED", "EM", "CD", "CM", "RIT"]):
+            nivel = "Baixo impacto, com prejuízo funcional reportado"
+        else:
+            nivel = "Baixo impacto"
+
+    paragrafo = f"{texto}\n\nNível de impacto: {nivel}."
+
+    # Sobrescreve com texto estático do JSON se existir
+    if titulo in TEXTOS_DIAGNOSTICOS:
+        dados = TEXTOS_DIAGNOSTICOS[titulo]
+        titulo = dados.get("titulo", titulo)
+        texto_json = dados.get("texto", "")
+        if texto_json:
+            paragrafo = f"{texto_json}\n\nNível de impacto: {nivel}."
+
+    return titulo, paragrafo
+
+
+def gerar_alertas(escores: dict, respostas: dict, titulo_diagnostico: str = "") -> list[dict]:
+    """Gera alertas clínicos prioritários para o relatório médico."""
+    alertas = []
+
+    # 1. Desejo de morte / ideação / tentativa (urgência)
+    desejo = respostas.get("CD46") == 1
+    ideacao = respostas.get("CD47") == 1
+    tentativa = respostas.get("CD48") == 1
+    if desejo or ideacao or tentativa:
+        msgs = []
+        if desejo:
+            msgs.append("Desejo de morte (CD46)")
+        if ideacao:
+            msgs.append("Ideação suicida ativa (CD47)")
+        if tentativa:
+            msgs.append("Tentativa de suicídio relatada (CD48)")
+        alertas.append({
+            "tipo": "urgente",
+            "titulo": "ATENÇÃO MÉDICA URGENTE",
+            "texto": " e ".join(msgs) + ". Recomenda-se avaliação clínica imediata de risco. (CVV 188 — 24h)",
+        })
+
+    # 2. Severidade elevada (≥ 1,5× o corte ou limiares conservadores)
+    severos = []
+    if escores["M"] >= 21:
+        severos.append(f"Polo maníaco elevado (M = {escores['M']}/28, corte ≥ 14)")
+    if escores["D"] >= 25:
+        severos.append(f"Polo depressivo elevado (D = {escores['D']}/30, corte ≥ 17)")
+    if escores["RIT"] >= 8:
+        severos.append(f"Ritmicidade crítica elevada (RIT = {escores['RIT']}/14, corte ≥ 5)")
+
+    if severos:
+        alertas.append({
+            "tipo": "severidade",
+            "titulo": "SEVERIDADE ELEVADA — ATENÇÃO CLÍNICA",
+            "texto": "Escores substancialmente acima dos pontos de corte: " + "; ".join(severos) + ".",
+        })
+
+    # 3. Comorbidades — só aparecem se cruzarem com o diagnóstico real
+    dx_codigo = DX_MAPA.get(titulo_diagnostico, "")
+    if dx_codigo and INTERFERENCIAS:
+        # Agrupa por comorbidade as interferências que batem com o DX atual
+        por_cm = {}
+        for (pergunta, cm, dx), texto in INTERFERENCIAS.items():
+            if dx == dx_codigo and respostas.get(pergunta) == 1:
+                if cm not in por_cm:
+                    por_cm[cm] = {"itens": [], "textos": []}
+                por_cm[cm]["itens"].append(pergunta)
+                por_cm[cm]["textos"].append(texto)
+
+        # Nomes das comorbidades
+        cm_nomes = {
+            "CM_01": "Uso de Substâncias / Medicamentos (Humor Depressivo)",
+            "CM_02": "Uso de Substâncias / Medicamentos (Elevação/Irritabilidade)",
+            "CM_03": "Sintomas Ansiosos / Transtorno de Ansiedade Concomitante",
+            "CM_04": "Comprometimento Neurocognitivo",
+            "CM_05": "Sintomas Paranoides / Ideação Persecutória",
+            "CM_06": "Alucinações Auditivas Hostis / Manifestação Psicótica",
+            "CM_07": "Alucinações Auditivas Positivas / Psicose Maníaca",
+            "CM_08": "Impulsividade / Comportamento de Risco / Substâncias",
+            "CM_09": "Redução da Necessidade de Sono (Ativação Maníaca)",
+            "CM_10": "Sintomas Físicos Recorrentes / Alterações Sensoriais / Efeitos Adversos",
+        }
+
+        for cm, dados in por_cm.items():
+            nome = cm_nomes.get(cm, cm)
+            itens = ", ".join(dados["itens"])
+            sugestao = " ".join(dados["textos"])
+            alertas.append({
+                "tipo": "comorbidade",
+                "titulo": f"COMORBIDADE {cm} — {nome}",
+                "texto": f"Impacto em {dx_codigo} : {titulo_diagnostico} (Itens: {itens}).\nSugestão: {sugestao}",
+            })
+
+    return alertas
+
+
+# ============================================================
+# GERAÇÃO DE PDF
+# ============================================================
+
+def gerar_pdf(escores: dict, resultado: str, detalhe: str, respostas: dict, citacoes: list | None = None, alertas: list | None = None) -> bytes:
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer, pagesize=A4,
+        rightMargin=2 * cm, leftMargin=2 * cm,
+        topMargin=2 * cm, bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Titulo", fontSize=16, alignment=TA_CENTER, spaceAfter=12, textColor=colors.HexColor("#1f77b4")))
+    styles.add(ParagraphStyle(name="Subtitulo", fontSize=11, alignment=TA_CENTER, spaceAfter=20, textColor=colors.grey))
+    styles.add(ParagraphStyle(name="Secao", fontSize=12, spaceBefore=14, spaceAfter=8, textColor=colors.HexColor("#0d47a1")))
+    styles.add(ParagraphStyle(name="Texto", fontSize=10, spaceAfter=6))
+    styles.add(ParagraphStyle(name="Resultado", fontSize=12, alignment=TA_CENTER, spaceBefore=10, spaceAfter=10, textColor=colors.HexColor("#0d47a1")))
+
+    story = []
+    story.append(Paragraph("MOODMETRICS", styles["Titulo"]))
+    story.append(Paragraph(
+        "Instrumento de Avaliação do Espectro do Humor<br/>",
+        styles["Subtitulo"],
+    ))
+    story.append(Paragraph(f"Data da avaliação: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Texto"]))
+    story.append(Spacer(1, 12))
+
+    story.append(Paragraph("RESULTADO", styles["Secao"]))
+    story.append(Paragraph(f"<b>{resultado}</b>", styles["Resultado"]))
+    story.append(Paragraph(detalhe.replace("\n", "<br/>"), styles["Texto"]))
+    story.append(Spacer(1, 8))
+
+    # Alertas clínicos prioritários
+    if alertas:
+        for al in alertas:
+            if al["tipo"] == "urgente":
+                cor = colors.HexColor("#b71c1c")
+                bg = colors.HexColor("#ffcdd2")
+            elif al["tipo"] == "severidade":
+                cor = colors.HexColor("#e65100")
+                bg = colors.HexColor("#fff3e0")
+            else:
+                cor = colors.HexColor("#2e7d32")
+                bg = colors.HexColor("#e8f5e9")
+            story.append(Paragraph(
+                f"<b>{al['titulo']}</b><br/>{al['texto'].replace(chr(10), '<br/>')}",
+                ParagraphStyle(
+                    name=f"Alerta_{al['tipo']}_{id(al)}",
+                    fontSize=10,
+                    textColor=cor,
+                    spaceBefore=6,
+                    spaceAfter=6,
+                    borderPadding=6,
+                    backColor=bg,
+                ),
+            ))
+        story.append(Spacer(1, 10))
+    else:
+        story.append(Spacer(1, 10))
+
+    data = [
+        ["Dimensão", "Escore", "Máximo"],
+        ["HD – Humor Depressivo", str(escores["HD"]), "12"],
+        ["HM – Humor Maníaco", str(escores["HM"]), "12"],
+        ["ED – Energia Depressiva", str(escores["ED"]), "5"],
+        ["EM – Energia Maníaca", str(escores["EM"]), "6"],
+        ["CD – Cognição Depressiva", str(escores["CD"]), "13"],
+        ["CM – Cognição Maníaca", str(escores["CM"]), "10"],
+        ["RIT – Ritmicidade", f"{escores['RIT']} ({faixa_rit(escores['RIT'])})", "14"],
+        ["M = HM + EM + CM", str(escores["M"]), "28 (corte ≥ 14)"],
+        ["D = HD + ED + CD", str(escores["D"]), "30 (corte ≥ 17)"],
+        ["T = M + D + RIT", str(escores["T"]), "72"],
+    ]
+    table = Table(data, colWidths=[8 * cm, 5 * cm, 4 * cm])
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1f77b4")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#e8f4f8")]),
+    ]))
+    story.append(table)
+    story.append(Spacer(1, 16))
+
+    # Status das travas
+    story.append(Paragraph("Travas de Prejuízo Funcional", styles["Secao"]))
+    for bloco_id, nome, _ in BLOCOS:
+        val = escores["travas"].get(bloco_id)
+        if val == 1:
+            status = '<font color="#c62828"><b>POSITIVA (prejuízo reportado)</b></font>'
+        elif val == 0:
+            status = '<font color="#2e7d32"><b>Negativa / Não aplicável</b></font>'
+        else:
+            status = '<font color="#757575">Não respondida</font>'
+        story.append(Paragraph(f"<b>{nome}</b>: {status}", styles["Texto"]))
+
+    story.append(Spacer(1, 16))
+    story.append(Paragraph("Respostas individuais", styles["Secao"]))
+
+    def fmt_resp(v):
+        if v == 1:
+            return "SIM"
+        if v == "NA":
+            return "N/A (não se aplica)"
+        return "NÃO"
+
+    for k, v in respostas.items():
+        if k.startswith("F"):
+            continue
+        label = ITEMS.get(k, {}).get("label", k)
+        story.append(Paragraph(f"<b>{k}</b> ({label}): {fmt_resp(v)}", styles["Texto"]))
+
+    # Base bibliográfica estática
+    if citacoes:
+        story.append(Spacer(1, 16))
+        story.append(Paragraph("Base bibliográfica", styles["Secao"]))
+        story.append(Paragraph(
+            "Textos de apoio e referências utilizadas na interpretação dimensional do MOODMETRICS.",
+            styles["Texto"],
+        ))
+        for i, cit in enumerate(citacoes, 1):
+            story.append(Paragraph(f"{i}. {cit}", styles["Texto"]))
+
+    story.append(Spacer(1, 20))
+    story.append(Paragraph(
+        "<i>Este relatório é gerado automaticamente pelo algoritmo MOODMETRICS e não substitui avaliação clínica profissional. "
+        "</i>",
+        styles["Texto"],
+    ))
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# ============================================================
+# INTERFACE STREAMLIT
+# ============================================================
+
+st.set_page_config(
+    page_title="MOODMETRICS",
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+st.markdown("""
+<style>
+    .main-header { font-size: 2.3rem; font-weight: 700; color: #1f77b4; text-align: center; }
+    .sub-header { text-align: center; color: #666; margin-bottom: 1.5rem; }
+    .question-box {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 12px;
+        border-left: 5px solid #1f77b4;
+        margin: 1rem 0;
+    }
+    .filter-box {
+        background-color: #fff8e1;
+        padding: 1.5rem;
+        border-radius: 12px;
+        border-left: 5px solid #f9a825;
+        margin: 1rem 0;
+    }
+    .result-box {
+        padding: 1.5rem;
+        border-radius: 12px;
+        background-color: #e3f2fd;
+        border-left: 6px solid #1565c0;
+        margin: 1rem 0;
+    }
+    .ethics-box {
+        background-color: #ffebee;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 4px solid #c62828;
+        margin: 0.5rem 0 1rem 0;
+        font-size: 0.95rem;
+    }
+    .alert-urgente {
+        background-color: #ffcdd2;
+        border: 2px solid #b71c1c;
+        border-radius: 10px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+    }
+    .alert-severidade {
+        background-color: #fff3e0;
+        border: 2px solid #e65100;
+        border-radius: 10px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+    }
+    .alert-comorbidade {
+        background-color: #e8f5e9;
+        border: 2px solid #2e7d32;
+        border-radius: 10px;
+        padding: 1.2rem;
+        margin: 1rem 0;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-header">🧠 MOODMETRICS</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="sub-header">Instrumento de Avaliação do Espectro do Humor<br>'
+    "Versão · 72 itens + filtros dinâmicos de prejuízo funcional</div>",
+    unsafe_allow_html=True,
+)
+
+# Sidebar
+with st.sidebar:
+    st.header("📋 Instruções")
+    st.markdown("""
+    - Considere períodos de **3–5 dias** ou mais.
+    - Responda **Sim** ou **Não** em cada pergunta.
+    - Nenhuma opção vem pré-selecionada — é obrigatório escolher.
+    - Os **filtros** não pontuam; avaliam prejuízo funcional.
+    - O filtro de cada bloco só aparece se houver pelo menos um **Sim**.
+    """)
+    st.divider()
+    st.header("📚 Bibliografia")
+    pasta_citacoes = st.text_input(
+        "Pasta das citações (.txt)",
+        value=str(DEFAULT_CITACOES),
+        help="Ex.: .../projeto_artigos/05_citacoes",
+    )
+    n_cit = len(list(Path(pasta_citacoes).glob("*.txt"))) if Path(pasta_citacoes).exists() else 0
+    if n_cit:
+        st.caption(f"Citações encontradas: **{n_cit}** arquivo(s)")
+    else:
+        st.caption("Pasta de citações não encontrada (bibliografia será omitida).")
+    st.caption("MOODMETRICS • Pesquisa científica")
+
+# Session state
+if "respostas" not in st.session_state:
+    st.session_state.respostas = {}
+if "current_idx" not in st.session_state:
+    st.session_state.current_idx = 0
+if "finished" not in st.session_state:
+    st.session_state.finished = False
+if "sequencia" not in st.session_state:
+    st.session_state.sequencia = construir_sequencia()
+
+SEQUENCIA = st.session_state.sequencia
+TOTAL_SLOTS = len(SEQUENCIA)
+
+# ============================================================
+# WIZARD (única forma de preenchimento)
+# ============================================================
+
+if not st.session_state.finished:
+    # Avança automaticamente filtros que não se aplicam (0 sintomas)
+    while st.session_state.current_idx < TOTAL_SLOTS:
+        slot = SEQUENCIA[st.session_state.current_idx]
+        if slot["tipo"] == "filtro":
+            texto_f = gerar_texto_filtro(slot["bloco"], st.session_state.respostas)
+            if texto_f is None:
+                st.session_state.respostas[slot["codigo"]] = 0
+                st.session_state.current_idx += 1
+                continue
+        break
+
+    if st.session_state.current_idx >= TOTAL_SLOTS:
+        st.session_state.finished = True
+        st.rerun()
+
+    progress = st.session_state.current_idx / TOTAL_SLOTS
+    st.progress(progress, text=f"Passo {st.session_state.current_idx + 1} de {TOTAL_SLOTS}")
+
+    slot = SEQUENCIA[st.session_state.current_idx]
+    is_filter = slot["tipo"] == "filtro"
+    codigo = slot["codigo"]
+    secao = slot["nome_secao"]
+
+    st.markdown(f"**Seção:** {secao}")
+
+    if is_filter:
+        texto = gerar_texto_filtro(slot["bloco"], st.session_state.respostas)
+        if texto is None:
+            st.session_state.respostas[codigo] = 0
+            st.session_state.current_idx += 1
+            st.rerun()
+        st.markdown(f"""
+        <div class="filter-box">
+            <h4>[{codigo}] Filtro de Prejuízo Funcional</h4>
+            <p style="font-size:1.15rem; line-height:1.5;">{texto}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        item = ITEMS[codigo]
+        if codigo in ("CD46", "CD47", "CD48"):
+            st.markdown("""
+            <div class="ethics-box">
+                <strong>Aviso importante:</strong> As próximas perguntas tratam de pensamentos ou comportamentos
+                relacionados a morte e suicídio. Se você estiver em sofrimento, procure ajuda imediatamente
+                (CVV 188 no Brasil — 24h, gratuito e sigiloso).
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="question-box">
+            <h4>[{codigo}] {item['label']}</h4>
+            <p style="font-size:1.1rem;">{item['texto']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Seleção com feedback visual + botão "Próxima" para avançar
+    # RIT68 (tri_state): Sim / Não / Não se aplica
+    resp_atual = st.session_state.respostas.get(codigo)  # 1, 0, "NA" ou None
+    is_tri = (not is_filter) and ITEMS.get(codigo, {}).get("tri_state", False)
+
+    if resp_atual is None:
+        st.caption("Escolha uma opção (nenhuma selecionada ainda):")
+    elif resp_atual == 1:
+        st.success("Selecionado: **Sim**")
+    elif resp_atual == "NA":
+        st.warning("Selecionado: **Não se aplica**")
+    else:
+        st.info("Selecionado: **Não**")
+
+    if is_tri:
+        c1, c2, c3, c4, c5 = st.columns([1, 1, 1.3, 1, 1])
+        with c1:
+            t_sim = "primary" if resp_atual == 1 else "secondary"
+            if st.button("Sim", use_container_width=True, type=t_sim, key=f"sim_{codigo}"):
+                st.session_state.respostas[codigo] = 1
+                st.rerun()
+        with c2:
+            t_nao = "primary" if resp_atual == 0 else "secondary"
+            if st.button("Não", use_container_width=True, type=t_nao, key=f"nao_{codigo}"):
+                st.session_state.respostas[codigo] = 0
+                st.rerun()
+        with c3:
+            t_na = "primary" if resp_atual == "NA" else "secondary"
+            if st.button("Não se aplica", use_container_width=True, type=t_na, key=f"na_{codigo}"):
+                st.session_state.respostas[codigo] = "NA"
+                st.rerun()
+        with c4:
+            if resp_atual is not None:
+                if st.button("Próxima →", use_container_width=True, type="primary", key=f"next_{codigo}"):
+                    st.session_state.current_idx += 1
+                    st.rerun()
+            else:
+                st.button("Próxima →", use_container_width=True, disabled=True, key=f"next_dis_{codigo}")
+        with c5:
+            if st.session_state.current_idx > 0:
+                if st.button("⬅️ Voltar", use_container_width=True, key="voltar"):
+                    st.session_state.current_idx -= 1
+                    st.rerun()
+    else:
+        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+        with col1:
+            tipo_sim = "primary" if resp_atual == 1 else "secondary"
+            if st.button("Sim", use_container_width=True, type=tipo_sim, key=f"sim_{codigo}"):
+                st.session_state.respostas[codigo] = 1
+                st.rerun()
+        with col2:
+            tipo_nao = "primary" if resp_atual == 0 else "secondary"
+            if st.button("Não", use_container_width=True, type=tipo_nao, key=f"nao_{codigo}"):
+                st.session_state.respostas[codigo] = 0
+                st.rerun()
+        with col3:
+            if resp_atual is not None:
+                if st.button("Próxima →", use_container_width=True, type="primary", key=f"next_{codigo}"):
+                    st.session_state.current_idx += 1
+                    st.rerun()
+            else:
+                st.button("Próxima →", use_container_width=True, disabled=True, key=f"next_dis_{codigo}")
+        with col4:
+            if st.session_state.current_idx > 0:
+                if st.button("⬅️ Voltar", use_container_width=True, key="voltar"):
+                    st.session_state.current_idx -= 1
+                    st.rerun()
+
+# ============================================================
+# RESULTADOS
+# ============================================================
+
+if st.session_state.finished:
+    escores = calcular_escores(st.session_state.respostas)
+    resultado, detalhe = interpretar(escores)
+    alertas = gerar_alertas(escores, st.session_state.respostas, resultado)
+    citacoes = carregar_citacoes(pasta_citacoes)
+
+    st.success("Avaliação Concluída!")
+    st.markdown(f"""
+    <div class="result-box">
+        <h2 style="margin-top:0; color:#0d47a1;">{resultado}</h2>
+        <p style="font-size:1.05rem; line-height:1.5; color:#37474f; margin-bottom:0;">{detalhe.replace(chr(10), '<br/>')}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Alertas clínicos
+    for al in alertas:
+        if al["tipo"] == "urgente":
+            cls = "alert-urgente"
+        elif al["tipo"] == "severidade":
+            cls = "alert-severidade"
+        else:
+            cls = "alert-comorbidade"
+        st.markdown(f"""
+        <div class="{cls}">
+            <strong>{al['titulo']}</strong><br/>
+            {al['texto'].replace(chr(10), '<br/>')}
+        </div>
+        """, unsafe_allow_html=True)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("M (Maníaco)", f"{escores['M']}/28")
+    c2.metric("D (Depressivo)", f"{escores['D']}/30")
+    c3.metric("RIT", f"{escores['RIT']}/14")
+    c4.metric("Total (T)", f"{escores['T']}/72")
+    st.caption(f"RIT: {faixa_rit(escores['RIT'])}")
+
+    # Travas
+    with st.expander("Status das Travas de Prejuízo Funcional"):
+        for bloco_id, nome, _ in BLOCOS:
+            val = escores["travas"].get(bloco_id)
+            if val == 1:
+                st.write(f"**{nome}**: ✅ Positiva (Prejuízo Reportado)")
+            elif val == 0:
+                st.write(f"**{nome}**: ○ Negativa / Não Aplicável")
+            else:
+                st.write(f"**{nome}**: ⚠ Não Respondida")
+
+    # Bibliografia (se houver)
+    if citacoes:
+        with st.expander(f"📚 Base bibliográfica ({len(citacoes)} referências)"):
+            for i, cit in enumerate(citacoes, 1):
+                st.write(f"{i}. {cit}")
+
+    # Gráfico
+    st.subheader("📊 Escores por dimensão")
+    labels = ["HD", "HM", "ED", "EM", "CD", "CM", "RIT"]
+    values = [escores[k] for k in labels]
+    maximos = [12, 12, 5, 6, 13, 10, 14]
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    bars = ax.bar(
+        labels, values,
+        color=["#42a5f5", "#ef5350", "#66bb6a", "#ffa726", "#ab47bc", "#26c6da", "#78909c"],
+    )
+    ax.set_ylim(0, max(maximos) + 2)
+    ax.set_ylabel("Pontuação")
+    ax.set_title("Escores MOODMETRICS")
+    for bar, val, mx in zip(bars, values, maximos):
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.3,
+                f"{val}/{mx}", ha="center", va="bottom", fontsize=9)
+    st.pyplot(fig)
+    plt.close()
+
+    with st.expander("Ver escores detalhados"):
+        st.write(f"""
+        - **HD** (Humor Depressivo): {escores['HD']} / 12
+        - **HM** (Humor Maníaco): {escores['HM']} / 12
+        - **ED** (Energia Depressiva): {escores['ED']} / 5
+        - **EM** (Energia Maníaca): {escores['EM']} / 6
+        - **CD** (Cognição Depressiva): {escores['CD']} / 13
+        - **CM** (Cognição Maníaca): {escores['CM']} / 10
+        - **RIT** (Ritmicidade): {escores['RIT']} / 14 → {faixa_rit(escores['RIT'])}
+        - **M** = HM+EM+CM: {escores['M']} / 28 (corte ≥ 14)
+        - **D** = HD+ED+CD: {escores['D']} / 30 (corte ≥ 17)
+        - **T** = M+D+RIT: {escores['T']} / 72
+        """)
+
+    st.subheader("📥 Baixar Relatório")
+    col_pdf, col_txt = st.columns(2)
+    with col_pdf:
+        pdf_bytes = gerar_pdf(escores, resultado, detalhe, st.session_state.respostas, citacoes, alertas)
+        st.download_button(
+            label="📄 Baixar PDF",
+            data=pdf_bytes,
+            file_name=f"MOODMETRICS_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    with col_txt:
+        texto_relatorio = f"""MOODMETRICS – Resultado
+Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+
+RESULTADO: {resultado}
+{detalhe}
+
+"""
+        if alertas:
+            texto_relatorio += "ALERTAS CLÍNICOS:\n"
+            for al in alertas:
+                texto_relatorio += f"- {al['titulo']}: {al['texto']}\n"
+            texto_relatorio += "\n"
+
+        texto_relatorio += f"""Escores:
+HD: {escores['HD']}
+HM: {escores['HM']}
+ED: {escores['ED']}
+EM: {escores['EM']}
+CD: {escores['CD']}
+CM: {escores['CM']}
+RIT: {escores['RIT']} → {faixa_rit(escores['RIT'])}
+M: {escores['M']}
+D: {escores['D']}
+T: {escores['T']}
+
+Travas:
+"""
+        for bloco_id, nome, _ in BLOCOS:
+            val = escores["travas"].get(bloco_id)
+            status = "POSITIVA" if val == 1 else ("Negativa/N/A" if val == 0 else "Não respondida")
+            texto_relatorio += f"{nome}: {status}\n"
+        if citacoes:
+            texto_relatorio += "\nBase bibliográfica:\n"
+            for i, cit in enumerate(citacoes, 1):
+                texto_relatorio += f"{i}. {cit}\n"
+        texto_relatorio += "\nRespostas:\n"
+        for k, v in st.session_state.respostas.items():
+            if v == 1:
+                txt = "SIM"
+            elif v == "NA":
+                txt = "N/A (não se aplica)"
+            else:
+                txt = "NÃO"
+            texto_relatorio += f"{k}: {txt}\n"
+
+        st.download_button(
+            label="📝 Baixar TXT",
+            data=texto_relatorio,
+            file_name=f"MOODMETRICS_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+    st.divider()
+    if st.button("🔄 Nova avaliação", use_container_width=True):
+        st.session_state.respostas = {}
+        st.session_state.current_idx = 0
+        st.session_state.finished = False
+        st.session_state.sequencia = construir_sequencia()
+        st.rerun()
