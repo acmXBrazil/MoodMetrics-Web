@@ -787,17 +787,17 @@ def gerar_alertas(escores: dict, respostas: dict, titulo_diagnostico: str = "") 
     # 2. Severidade elevada (≥ 1,5× o corte ou limiares conservadores)
     severos = []
     if escores["M"] >= 21:
-        severos.append(f"Polo maníaco elevado (M = {escores['M']}/28, corte ≥ 14)")
+        severos.append(f"Polo Maníaco Elevado (M = {escores['M']}/28, corte ≥ 14)")
     if escores["D"] >= 25:
-        severos.append(f"Polo depressivo elevado (D = {escores['D']}/30, corte ≥ 17)")
+        severos.append(f"Polo Depressivo Elevado (D = {escores['D']}/30, corte ≥ 17)")
     if escores["RIT"] >= 8:
-        severos.append(f"Ritmicidade crítica elevada (RIT = {escores['RIT']}/14, corte ≥ 5)")
+        severos.append(f"Ritmicidade Crítica Elevada (RIT = {escores['RIT']}/14, corte ≥ 5)")
 
     if severos:
         alertas.append({
             "tipo": "severidade",
             "titulo": "SEVERIDADE ELEVADA — ATENÇÃO CLÍNICA",
-            "texto": "Escores substancialmente acima dos pontos de corte: " + "; ".join(severos) + ".",
+            "texto": "Escores Substancialmente Acima dos Pontos de Corte: " + "; ".join(severos) + ".",
         })
 
     # 3. Comorbidades — só aparecem se cruzarem com o diagnóstico real
@@ -859,23 +859,23 @@ def gerar_pdf(escores: dict, resultado: str, detalhe: str, respostas: dict, cita
     styles.add(ParagraphStyle(name="Impacto", fontSize=12, spaceBefore=8, spaceAfter=8, fontName="Helvetica-Bold", alignment=TA_LEFT))
 
     story = []
-    story.append(Paragraph("MOODMETRICS", styles["Titulo"]))
+    story.append(Paragraph("MOODMETRICS - acmX", styles["Titulo"]))
     story.append(Paragraph(
-        "Instrumento de Avaliação do Espectro do Humor<br/>",
+        "Instrumento de Avaliação do Espectro do Humor, baseado no algoritmo e na pesquisa de Anderson Ribeiro M.Sc.<br/>",
         styles["Subtitulo"],
     ))
-    story.append(Paragraph(f"Data da avaliação: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Texto"]))
+    story.append(Paragraph(f"Data da Avaliação: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles["Texto"]))
     # Dados demográficos (se disponíveis)
     demo_lines = []
     if hasattr(st, "session_state"):
         if getattr(st.session_state, "genero", None):
             demo_lines.append(f"Gênero: {st.session_state.genero}")
         if getattr(st.session_state, "faixa_etaria", None):
-            demo_lines.append(f"Faixa etária: {st.session_state.faixa_etaria}")
+            demo_lines.append(f"Faixa Etária: {st.session_state.faixa_etaria}")
         if getattr(st.session_state, "acomp_psico", None):
-            demo_lines.append(f"Acompanhamento psicológico: {st.session_state.acomp_psico}")
+            demo_lines.append(f"Acompanhamento Psicológico: {st.session_state.acomp_psico}")
         if getattr(st.session_state, "acomp_psiq", None):
-            demo_lines.append(f"Acompanhamento psiquiátrico: {st.session_state.acomp_psiq}")
+            demo_lines.append(f"Acompanhamento Psiquiátrico: {st.session_state.acomp_psiq}")
     if demo_lines:
         story.append(Paragraph(" | ".join(demo_lines), styles["Texto"]))
     story.append(Spacer(1, 12))
@@ -884,7 +884,7 @@ def gerar_pdf(escores: dict, resultado: str, detalhe: str, respostas: dict, cita
     story.append(Paragraph(resultado, styles["Resultado"]))
     
     # Separa o texto do nível de impacto para destacar
-    partes = detalhe.split("\n\nNível de impacto:")
+    partes = detalhe.split("\n\nNível de Impacto:")
     texto_principal = partes[0].replace("\n", "<br/>")
     story.append(Paragraph(texto_principal, styles["Texto"]))
     if len(partes) > 1:
@@ -959,11 +959,11 @@ def gerar_pdf(escores: dict, resultado: str, detalhe: str, respostas: dict, cita
         elif val == 0:
             status = '<font color="#2e7d32"><b>Negativa / Não aplicável</b></font>'
         else:
-            status = '<font color="#757575">Não respondida</font>'
+            status = '<font color="#757575">Não Respondida</font>'
         story.append(Paragraph(f"<b>{nome}</b>: {status}", styles["Texto"]))
 
     story.append(Spacer(1, 16))
-    story.append(Paragraph("Respostas individuais", styles["Secao"]))
+    story.append(Paragraph("Respostas Individuais", styles["Secao"]))
 
     def fmt_resp(v):
         if v == 1:
@@ -999,7 +999,7 @@ def gerar_pdf(escores: dict, resultado: str, detalhe: str, respostas: dict, cita
 
     story.append(Spacer(1, 20))
     story.append(Paragraph(
-        "<i>Este relatório é gerado automaticamente pelo algoritmo MOODMETRICS e não substitui avaliação clínica profissional.</i>",
+        "<i>Este relatório é gerado automaticamente pelo algoritmo MOODMETRICS, desenvolvido por Anderson Ribeiro M.Sc. em acmX e não substitui avaliação clínica profissional.</i>",
         styles["Texto"],
     ))
 
@@ -1090,7 +1090,7 @@ def salvar_no_sheets(escores, resultado, respostas, demograficos, alertas=None):
 # ============================================================
 
 st.set_page_config(
-    page_title="MOODMETRICS",
+    page_title="MOODMETRICS - acmX",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded",
