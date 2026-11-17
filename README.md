@@ -1,13 +1,21 @@
 # MOODMETRICS – Versão Web
 
-Instrumento de Avaliação do Espectro do Humor (versão isolada para testes na web / WordPress).
+Instrumento de Avaliação do Espectro do Humor  
+Versão isolada para testes na web / WordPress.
 
-## Arquivos essenciais
+## Estrutura
 
-- `sci_moods_streamlit.py` — aplicação principal
-- `textos_diagnosticos.json` — textos dos diagnósticos
-- `Comorbidades/interferencias_template.md` — interferências / comorbidades
-- `requirements.txt` — dependências Python
+```
+MoodMetrics_Web/
+├── Comorbidades/
+│   └── interferencias_template.md
+├── citacoes/                  ← arquivos .txt da bibliografia (01.txt, 02.txt...)
+├── sci_moods_streamlit.py     ← aplicação principal
+├── textos_diagnosticos.json
+├── requirements.txt
+├── .gitignore
+└── README.md
+```
 
 ## Como rodar localmente
 
@@ -16,32 +24,33 @@ pip install -r requirements.txt
 streamlit run sci_moods_streamlit.py
 ```
 
-## Como colocar no WordPress
+## Deploy no Streamlit Community Cloud
 
-A forma mais simples e segura é:
+1. Crie um repositório **público** no GitHub com o conteúdo desta pasta.
+2. Acesse [share.streamlit.io](https://share.streamlit.io) e faça login com o GitHub.
+3. Clique em **New app**.
+4. Selecione o repositório.
+5. Main file path: `sci_moods_streamlit.py`
+6. Clique em **Deploy**.
 
-1. Hospedar este app no **Streamlit Community Cloud** (grátis):
-   - Crie um repositório no GitHub com esta pasta.
-   - Acesse https://share.streamlit.io e faça o deploy.
+## Embutir no WordPress
 
-2. No WordPress, embede via iframe:
+Depois do deploy, use um bloco HTML no WordPress:
 
 ```html
 <iframe 
-  src="https://seu-app.streamlit.app" 
+  src="https://SEU-APP.streamlit.app" 
   width="100%" 
-  height="800" 
+  height="850" 
   frameborder="0" 
-  style="border: none; border-radius: 8px;">
+  style="border:none; border-radius:8px;">
 </iframe>
 ```
 
-> Observação: o Streamlit Community Cloud tem limites de uso gratuito. Para produção maior, considere Streamlit em servidor próprio ou alternativas.
+Substitua `https://SEU-APP.streamlit.app` pela URL real gerada pelo Streamlit Cloud.
 
-## Citações (bibliografia)
+## Observações
 
-A pasta `citacoes/` é opcional. Se quiser exibir bibliografia no relatório, coloque os arquivos `.txt` (01.txt, 02.txt...) dentro dela.
-
-## Isolamento
-
-Esta pasta é uma cópia isolada do projeto original. Alterações aqui não afetam o `Projeto_questionario` original.
+- A pasta `citacoes/` deve ser enviada para o repositório para a bibliografia aparecer no PDF.
+- Dados demográficos são coletados de forma anônima no início.
+- Esta versão é isolada do projeto original.
