@@ -8,6 +8,8 @@ Filtros de prejuízo funcional dinâmicos e integrados à interpretação.
 """
 
 import streamlit as st
+import gspread
+from google.oauth2.service_account import Credentials
 from datetime import datetime
 from pathlib import Path
 import json
@@ -1017,6 +1019,54 @@ def gerar_pdf(escores: dict, resultado: str, detalhe: str, respostas: dict, cita
     return buffer.getvalue()
 
 
+
+# ============================================================
+# SALVAMENTO NO GOOGLE SHEETS
+# ============================================================
+SHEET_ID = "1iOsGw3Fs01YuEIDmTs6_d9iwfjC3SdIMov1y8G4TYRE"
+
+def salvar_no_sheets(escores, resultado, respostas, demograficos):
+    """Salva uma linha na planilha do Google Sheets."""
+    try:
+        # Usa os secrets do Streamlit Cloud
+        creds_dict = st.secrets["gcp_service_account"]
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(credentials)
+        sheet = client.open_by_key(SHEET_ID).sheet1
+
+        # Monta a linha
+        linha = [
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            demograficos.get("genero", ""),
+            demograficos.get("faixa_etaria", ""),
+            demograficos.get("acomp_psico", ""),
+            demograficos.get("acomp_psiq", ""),
+            resultado,
+            escores.get("M", ""),
+            escores.get("D", ""),
+            escores.get("RIT", ""),
+            escores.get("T", ""),
+            escores.get("HD", ""),
+            escores.get("HM", ""),
+            escores.get("ED", ""),
+            escores.get("EM", ""),
+            escores.get("CD", ""),
+            escores.get("CM", ""),
+        ]
+        # Adiciona respostas principais (opcional, resumido)
+        for k in ["HD01", "HM13", "CD46", "CD47", "CD48"]:
+            linha.append(respostas.get(k, ""))
+
+        sheet.append_row(linha, value_input_option="USER_ENTERED")
+        return True
+    except Exception as e:
+        st.error(f"Erro ao salvar no Google Sheets: {e}")
+        return False
+
 # ============================================================
 # INTERFACE STREAMLIT
 # ============================================================
@@ -1288,6 +1338,17 @@ if st.session_state.finished:
     resultado, detalhe = interpretar(escores)
     alertas = gerar_alertas(escores, st.session_state.respostas, resultado)
     citacoes = carregar_citacoes(pasta_citacoes)
+
+    # Salva no Google Sheets (apenas uma vez)
+    if "salvo_sheets" not in st.session_state:
+        demograficos = {
+            "genero": getattr(st.session_state, "genero", ""),
+            "faixa_etaria": getattr(st.session_state, "faixa_etaria", ""),
+            "acomp_psico": getattr(st.session_state, "acomp_psico", ""),
+            "acomp_psiq": getattr(st.session_state, "acomp_psiq", ""),
+        }
+        if salvar_no_sheets(escores, resultado, st.session_state.respostas, demograficos):
+            st.session_state.salvo_sheets = True
 
     st.success("Avaliação Concluída!")
     st.markdown(f"""
