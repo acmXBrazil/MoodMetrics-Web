@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MOODMETRICS – Versão (72 itens + 7 filtros dinâmicos)
+MOODMETRICS – Versão (72 + 7)
 Instrumento de Avaliação do Espectro do Humor
 
-Filtros de prejuízo funcional dinâmicos e integrados à interpretação.
+Filtros de Prejuízo Funcional Dinâmicos e Integrados à Interpretação.
 """
 
 import streamlit as st
@@ -117,7 +117,7 @@ DX_MAPA = {
     "BIPOLAR (Espectro Maníaco Ativo)": "DX_02",
     "BIPOLAR (Espectro Maníaco Ativo com Alta Desregulação Circadiana)": "DX_03",
     "Depressivo (Espectro Depressivo Unipolar)": "DX_04",
-    "Depressivo (componente do Espectro Bipolar)": "DX_05",
+    "Depressivo (Componente do Espectro Bipolar)": "DX_05",
     "Transtorno Depressivo com Características Mistas e Indícios de Espectro Bipolar": "DX_06",
     "Espectro Afetivo Altamente Instável (Subsindrômico)": "DX_07",
     "Sintomatologia Leve / Inespecífica": "DX_08",
@@ -456,7 +456,7 @@ ITEMS = {
     },
     "RIT60": {
         "label": "Necessidade de rotina",
-        "texto": "Você percebe que se adapta muito melhor e seu humor melhora com uma rotina regular, ou fica muito irritável se sua rotina diária for interrompida?",
+        "texto": "Você percebe que se adapta muito melhor e seu humor melhora com uma rotina regular, e fica muito irritável se sua rotina diária for interrompida?",
         "bloco": "RIT",
     },
     "RIT61": {
@@ -491,7 +491,7 @@ ITEMS = {
     },
     "RIT67": {
         "label": "Sono sazonal / fuso",
-        "texto": "...o seu padrão e necessidade de sono mudaram significativamente com as estações do ano ou ao cruzar fusos horários?",
+        "texto": "...o seu padrão e necessidade de sono mudaram significativamente com as estações do ano?",
         "bloco": "RIT",
     },
     "RIT68": {
