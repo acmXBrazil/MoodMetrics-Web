@@ -1025,10 +1025,9 @@ def gerar_pdf(escores: dict, resultado: str, detalhe: str, respostas: dict, cita
 # ============================================================
 SHEET_ID = "1iOsGw3Fs01YuEIDmTs6_d9iwfjC3SdIMov1y8G4TYRE"
 
-def salvar_no_sheets(escores, resultado, respostas, demograficos):
-    """Salva uma linha na planilha do Google Sheets."""
+def salvar_no_sheets(escores, resultado, respostas, demograficos, alertas=None):
+    """Salva respostas completas + demográficos + diagnóstico + alertas (só título)."""
     try:
-        # Usa os secrets do Streamlit Cloud
         creds_dict = st.secrets["gcp_service_account"]
         scopes = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -1038,6 +1037,25 @@ def salvar_no_sheets(escores, resultado, respostas, demograficos):
         client = gspread.authorize(credentials)
         sheet = client.open_by_key(SHEET_ID).sheet1
 
+        # Códigos das perguntas (em ordem)
+        codigos_perguntas = ['HD01', 'HD02', 'HD03', 'HD04', 'HD05', 'HD06', 'HD07', 'HD08', 'HD09', 'HD10', 'HD11', 'HD12', 'HM13', 'HM14', 'HM15', 'HM16', 'HM17', 'HM18', 'HM19', 'HM20', 'HM21', 'HM22', 'HM23', 'HM24', 'ED25', 'ED26', 'ED27', 'ED28', 'ED29', 'EM30', 'EM31', 'EM32', 'EM33', 'EM34', 'EM35', 'CD36', 'CD37', 'CD38', 'CD39', 'CD40', 'CD41', 'CD42', 'CD43', 'CD44', 'CD45', 'CD46', 'CD47', 'CD48', 'CM49', 'CM50', 'CM51', 'CM52', 'CM53', 'CM54', 'CM55', 'CM56', 'CM57', 'CM58']
+
+        # Cabeçalhos
+        headers = [
+            "DataHora", "Genero", "FaixaEtaria", "AcompPsico", "AcompPsiq",
+            "Diagnostico", "Alertas"
+        ] + codigos_perguntas
+
+        # Escreve cabeçalho se a planilha estiver vazia
+        existing = sheet.get_all_values()
+        if not existing or not existing[0]:
+            sheet.append_row(headers, value_input_option="USER_ENTERED")
+
+        # Alertas: só os títulos, separados por " | "
+        titulos_alertas = ""
+        if alertas:
+            titulos_alertas = " | ".join(al.get("titulo", "") for al in alertas if al.get("titulo"))
+
         # Monta a linha
         linha = [
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1046,26 +1064,26 @@ def salvar_no_sheets(escores, resultado, respostas, demograficos):
             demograficos.get("acomp_psico", ""),
             demograficos.get("acomp_psiq", ""),
             resultado,
-            escores.get("M", ""),
-            escores.get("D", ""),
-            escores.get("RIT", ""),
-            escores.get("T", ""),
-            escores.get("HD", ""),
-            escores.get("HM", ""),
-            escores.get("ED", ""),
-            escores.get("EM", ""),
-            escores.get("CD", ""),
-            escores.get("CM", ""),
+            titulos_alertas,
         ]
-        # Adiciona respostas principais (opcional, resumido)
-        for k in ["HD01", "HM13", "CD46", "CD47", "CD48"]:
-            linha.append(respostas.get(k, ""))
+        # Respostas (1 = Sim, 0 = Não, NA = Não se aplica)
+        for cod in codigos_perguntas:
+            v = respostas.get(cod, "")
+            if v == 1:
+                linha.append(1)
+            elif v == 0:
+                linha.append(0)
+            elif v == "NA":
+                linha.append("NA")
+            else:
+                linha.append("")
 
         sheet.append_row(linha, value_input_option="USER_ENTERED")
         return True
     except Exception as e:
         st.error(f"Erro ao salvar no Google Sheets: {e}")
         return False
+
 
 # ============================================================
 # INTERFACE STREAMLIT
@@ -1347,7 +1365,7 @@ if st.session_state.finished:
             "acomp_psico": getattr(st.session_state, "acomp_psico", ""),
             "acomp_psiq": getattr(st.session_state, "acomp_psiq", ""),
         }
-        if salvar_no_sheets(escores, resultado, st.session_state.respostas, demograficos):
+        if salvar_no_sheets(escores, resultado, st.session_state.respostas, demograficos, alertas):
             st.session_state.salvo_sheets = True
 
     st.success("Avaliação Concluída!")
